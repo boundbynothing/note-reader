@@ -47,7 +47,9 @@ button.metro.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
 .meter s{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.6}
 .beats{display:none;gap:6px;align-items:center}
 .beats.on{display:flex}
-.beats span{width:12px;height:12px;border-radius:50%;background:var(--line)}
+.beats span{width:14px;height:14px;border-radius:50%;background:var(--line);transition:transform .08s}
+.beats span.lit{transform:scale(1.35)}
+.stand.pulse{box-shadow:0 0 0 3px var(--hint)}
 .beats span.lit{background:var(--ink)}
 .beats span.lit.one{background:var(--hint)}
 .piano{background:var(--lac);padding:12px 12px 10px}
@@ -175,12 +177,14 @@ details li{margin-bottom:6px}
         </select>
         <p class="small">“Keep going” is real sight-reading practice: the music doesn’t wait, so play what you can and move on.</p>
       </div>
-      <div class="row"><label for="volR">Click volume</label><input type="range" id="volR" min="1" max="10" step="1"></div>
+      <div class="row"><label for="volR">Click volume <span class="small" id="volTxt"></span></label><input type="range" id="volR" min="0" max="10" step="1">
+        <p class="small">Set it to 0 for a silent metronome: the beat lights flash and the page listens without any click. Wired headphones also work well.</p></div>
       <h2 style="margin-top:20px">Microphone</h2>
       <div class="row"><label for="sens">Sensitivity</label>
         <input type="range" id="sens" min="1" max="10" step="1">
         <p class="small">Raise it if soft notes aren’t heard. Lower it if room noise triggers notes.</p>
       </div>
+      <p class="small" id="micNote" style="color:var(--bad)"></p>
       <div class="row"><button id="calB">Tune: play middle C</button><p class="small" id="calInfo"></p></div>
     </div>
 
@@ -611,13 +615,21 @@ async function ensureAC(){if(!ac)ac=new (window.AudioContext||window.webkitAudio
 
 /* ---------- metronome ---------- */
 const metro={on:false,next:0,beat:0,timer:null};
+const clickTimes=[];
 function clickAt(t,accent){
+  if(!S.vol)return;
+  clickTimes.push(t);if(clickTimes.length>8)clickTimes.shift();
   const o=ac.createOscillator(),g=ac.createGain(),v=0.04*S.vol;
   o.type='sine';o.frequency.value=accent?3200:2500;
   g.gain.setValueAtTime(0.0001,t);
   g.gain.exponentialRampToValueAtTime(v,t+0.004);
   g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
   o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+0.06);
+}
+function clickInWindow(){
+  if(!metro.on||!S.vol||!ac)return false;
+  const now=ac.currentTime,lat=(ac.outputLatency||0)+(ac.baseLatency||0)+0.04;
+  return clickTimes.some(t=>t+lat>now-0.16&&t+lat<now+0.03);
 }
 function schedule(){
   while(metro.next<ac.currentTime+0.12){
@@ -631,6 +643,7 @@ const dots=[...document.querySelectorAll('#beats span')];
 function onBeat(b){
   if(!metro.on)return;
   dots.forEach((d,i)=>d.classList.toggle('lit',i===b%4));
+  if(!S.vol){const st=document.querySelector('.stand');st.classList.add('pulse');setTimeout(()=>st.classList.remove('pulse'),110)}
   if(pacing())onPaceBeat();
 }
 async function setMetro(on){
@@ -651,6 +664,11 @@ async function setMetro(on){
 }
 
 /* ---------- microphone + pitch detection ---------- */
+let micFiltered=false;
+function showMicNote(){
+  const el=$('micNote');if(!el)return;
+  el.textContent=micFiltered?'Your phone or browser is filtering the microphone. If notes aren’t heard while the metronome clicks, set the click volume to 0 for a silent, lights-only metronome, or use wired headphones.':'';
+}
 let an=null,an2=null,buf=null,fbuf=null,hist=[],calibrating=false,calib=[];
 const thr=()=>0.04*Math.pow(0.72,S.sens-1);
 function placeThr(){$('thr').style.left=Math.min(98,Math.sqrt(thr())*300)+'%'}
@@ -659,9 +677,15 @@ async function startMic(){
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw Object.assign(new Error('no api'),{name:'NoApi'});
     const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     await ensureAC();
-    const src=ac.createMediaStreamSource(st);
-    an=ac.createAnalyser();an.fftSize=4096;src.connect(an);
-    an2=ac.createAnalyser();an2.fftSize=16384;an2.smoothingTimeConstant=0;src.connect(an2);
+    const tr=st.getAudioTracks()[0];
+    try{await tr.applyConstraints({echoCancellation:false,noiseSuppression:false,autoGainControl:false})}catch(x){}
+    const set=tr.getSettings?tr.getSettings():{};
+    micFiltered=!!(set.echoCancellation||set.noiseSuppression);
+    showMicNote();
+    let node=ac.createMediaStreamSource(st);
+    for(const f of [2500,3200,2500,3200]){const n=ac.createBiquadFilter();n.type='notch';n.frequency.value=f;n.Q.value=4;node.connect(n);node=n}
+    an=ac.createAnalyser();an.fftSize=4096;node.connect(an);
+    an2=ac.createAnalyser();an2.fftSize=16384;an2.smoothingTimeConstant=0;node.connect(an2);
     buf=new Float32Array(an.fftSize);fbuf=new Float32Array(an2.frequencyBinCount);
     setInterval(tick,45);
     listening=true;startClock();
@@ -741,6 +765,7 @@ function tick(){
   let r=0;for(let i=0;i<buf.length;i++)r+=buf[i]*buf[i];
   r=Math.sqrt(r/buf.length);
   $('lvl').style.width=Math.min(100,Math.sqrt(r)*300)+'%';
+  if(clickInWindow()&&!(cur&&cur.kind==='chord'))return;
   if(r<thr()){hist=[];chordHist=[];$('heard').textContent='–';return}
   const ref=440*Math.pow(2,S.cal/1200);
   if(cur&&cur.kind==='chord'&&!calibrating){
@@ -779,6 +804,7 @@ function fillLevels(){
   $('levelSel').innerHTML=L.map((t,i)=>`<option value="${i}">${t}</option>`).join('');
   $('levelSel').value=S.mode==='chords'?S.clevel:S.level;
 }
+function volTxt(){$('volTxt').textContent=S.vol?'':'· silent, lights only'}
 function syncUI(){
   document.body.classList.toggle('chords',S.mode==='chords');
   document.querySelectorAll('#modeSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===S.mode));
@@ -787,7 +813,7 @@ function syncUI(){
   $('accChk').checked=S.acc;$('invChk').checked=S.inv;$('namesChk').checked=S.names;$('octChk').checked=S.anyOct;
   $('sens').value=S.sens;$('bpm').value=S.bpm;$('bpmVal').textContent=S.bpm;$('paceSel').value=S.pace;$('volR').value=S.vol;
   $('kbNote').textContent=S.mode==='chords'?'C4 is middle C. No microphone? Click the three keys of the chord.':'C4 is middle C. No microphone? Click the keys to answer.';
-  placeThr();showCal();
+  placeThr();showCal();volTxt();
 }
 function setBpm(v){
   S.bpm=Math.max(40,Math.min(160,v));saveS();
@@ -806,7 +832,7 @@ $('bpm').addEventListener('input',e=>setBpm(+e.target.value));
 $('bpmDown').addEventListener('click',()=>setBpm(S.bpm-4));
 $('bpmUp').addEventListener('click',()=>setBpm(S.bpm+4));
 $('paceSel').addEventListener('change',e=>{S.pace=+e.target.value;saveS();if(metro.on)next()});
-$('volR').addEventListener('input',e=>{S.vol=+e.target.value;saveS()});
+$('volR').addEventListener('input',e=>{S.vol=+e.target.value;saveS();volTxt()});
 $('metB').addEventListener('click',()=>setMetro(!metro.on));
 $('micB').addEventListener('click',startMic);
 $('hintB').addEventListener('click',hint);
