@@ -85,6 +85,27 @@ body.chords .notes-only,body:not(.chords) .chords-only{display:none}
 #weak .empty{background:none;padding:0;color:var(--soft)}
 .ghostb{margin-top:16px;font-size:14px;min-height:38px;color:var(--soft)}
 details.panel{margin-top:16px}
+.sessbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line)}
+.clockwrap{display:flex;align-items:baseline;gap:8px}
+.clock{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.clockwrap.paused .clock{color:var(--soft)}
+.sbtns{display:flex;gap:8px;flex-wrap:wrap}
+.overlay{position:fixed;inset:0;background:rgba(10,10,14,.55);display:none;justify-content:center;align-items:flex-start;padding:4vh 12px;overflow-y:auto;z-index:10}
+.overlay.on{display:flex}
+.report{background:var(--card);color:var(--ink);border-radius:18px;width:100%;max-width:660px;padding:22px clamp(16px,4vw,28px);box-shadow:0 20px 60px -20px rgba(0,0,0,.5)}
+.report h2{font-size:26px}
+.report h3{margin-top:20px}
+.report p{margin:0 0 10px}
+.rstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.rstats div{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
+.rstats b{display:block;font-size:22px;white-space:nowrap}
+.rstats span{font-size:13px;color:var(--soft)}
+.cnt{display:inline-block;min-width:1.6em;padding:0 6px;border-radius:999px;background:var(--bg);font-size:13px;text-align:center}
+.chips{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px}
+.chips li{background:var(--bg);border-radius:999px;padding:6px 12px;font-size:14px}
+.chips li b{font-size:16px}
+.rbtns{justify-content:flex-end;padding:18px 0 0}
+@media(max-width:600px){.rstats{grid-template-columns:repeat(2,minmax(0,1fr))}.sbtns{width:100%}.sbtns button{flex:1}}
 summary{font-weight:700;cursor:pointer;min-height:28px}
 details li{margin-bottom:6px}
 @media(max-width:600px){h1{font-size:28px}.msg{font-size:17px}.controls button{flex:1 1 40%}}
@@ -97,6 +118,10 @@ details li{margin-bottom:6px}
   <p class="sub">See a note or chord, play it on your piano. The page listens through your microphone and tells you if you got it right.</p>
 
   <section class="stand">
+    <div class="sessbar">
+      <div id="clockWrap" class="clockwrap"><span class="small">Practice time</span> <span id="clock" class="clock">0:00</span></div>
+      <div class="sbtns"><button id="pauseB">Pause</button><button id="finishB" class="primary">Finish &amp; see report</button></div>
+    </div>
     <div class="paper">
       <svg id="staff" role="img" aria-label="Music staff showing what to play"></svg>
       <div id="msg" class="msg" aria-live="polite">Press “Start listening,” then play what you see.</div>
@@ -187,6 +212,18 @@ details li{margin-bottom:6px}
     </ul>
   </details>
 </main>
+
+<div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+  <div class="report">
+    <h2 id="rTitle">Practice report</h2>
+    <div id="rBody"></div>
+    <div class="controls rbtns">
+      <button id="closeR">Keep practicing</button>
+      <button id="copyR">Copy report</button>
+      <button id="newS" class="primary">Start a new session</button>
+    </div>
+  </div>
+</div>
 
 <script>
 {
@@ -426,6 +463,7 @@ function onPaceBeat(){
   const s=notes[prev.key]||(notes[prev.key]={n:0,first:0,ms:0});
   const ms=S.pace*60000/S.bpm;s.n++;s.ms+=ms;store.set('notes',notes);
   sess.n++;sess.ms+=ms;sess.streak=0;renderStats();
+  trackItem(prev,ms,false);
   for(const m of prev.midis)mark(m,'show',700);
   next();
   say(`Missed: that was ${prev.label}. Keep going!`,'bad');
@@ -436,7 +474,96 @@ function record(ms,first){
   s.n++;if(first)s.first++;s.ms+=ms;store.set('notes',notes);
   sess.n++;sess.ms+=ms;
   if(first){sess.first++;sess.streak++;sess.best=Math.max(sess.best,sess.streak)}else sess.streak=0;
+  trackItem(cur,ms,first);
   renderStats();
+}
+
+/* ---------- practice clock + session report ---------- */
+let sessItems={},tStart=0,tPaused=0,pauseAt=0,savedIdx=-1;
+const elapsed=()=>tStart?(pauseAt||Date.now())-tStart-tPaused:0;
+const fmtClock=ms=>{const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s/60)%60,x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
+const fmtDur=ms=>{const m=Math.round(ms/60000);return m<1?'less than a minute':m===1?'1 minute':m<60?m+' minutes':Math.floor(m/60)+' hr '+(m%60)+' min'};
+function startClock(){if(!tStart){tStart=Date.now();tPaused=0;pauseAt=0}else if(pauseAt)togglePause()}
+function togglePause(){
+  if(!tStart)return;
+  if(pauseAt){tPaused+=Date.now()-pauseAt;pauseAt=0}else{pauseAt=Date.now();if(metro.on)setMetro(false)}
+  $('pauseB').textContent=pauseAt?'Resume':'Pause';
+  $('clockWrap').classList.toggle('paused',!!pauseAt);
+  tickClock();
+}
+function tickClock(){$('clock').textContent=fmtClock(elapsed())}
+setInterval(tickClock,1000);
+function trackItem(t,ms,first){
+  startClock();
+  const it=sessItems[t.key]||(sessItems[t.key]={label:t.label,clef:t.clef,kind:t.kind,n:0,first:0,ms:0});
+  it.n++;if(first)it.first++;it.ms+=Math.min(ms,30000);
+}
+const isMastered=s=>s.n>=4&&s.first/s.n>=0.8&&s.ms/s.n<=4000;
+function masteredCount(kind){return Object.entries(notes).filter(([k,s])=>isMastered(s)&&(kind==='chord'?/ (major|minor)/.test(k):!/ (major|minor)/.test(k))).length}
+const pct=x=>Math.round(x*100)+'%';
+function chip(i){return `<li><b>${i.label}</b> ${i.clef} · ${i.first}/${i.n} · ${i.avg.toFixed(1)} s</li>`}
+function buildReport(){
+  const items=Object.values(sessItems).map(i=>({...i,acc:i.first/i.n,avg:i.ms/i.n/1000}));
+  const n=sess.n,acc=n?sess.first/n:0,avg=n?sess.ms/n/1000:0,dur=elapsed();
+  const kinds=new Set(items.map(i=>i.kind)),kind=kinds.size===1?[...kinds][0]:(items.filter(i=>i.kind==='chord').length*2>items.length?'chord':'note');
+  const word=kinds.size>1?'notes and chords':kind==='chord'?'chords':'notes';
+  const kWord=kind==='chord'?'chords':'notes';
+  const well=items.filter(i=>i.first===i.n&&i.avg<=4).sort((a,b)=>a.avg-b.avg);
+  const learn=items.filter(i=>!well.includes(i)&&(i.acc<0.7||i.avg>6)).sort((a,b)=>a.acc-b.acc||b.avg-a.avg);
+  const mid=items.filter(i=>!well.includes(i)&&!learn.includes(i)).sort((a,b)=>b.acc-a.acc);
+  const hist=store.get('history',[]).filter((h,i)=>i!==savedIdx);
+  const prev=[...hist].reverse().find(h=>h.kind===kind&&h.n>=5);
+  const mastered=masteredCount(kind);
+  const P=[];
+  P.push(`You practiced for ${fmtDur(dur)} and played ${n} ${word}. You got ${pct(acc)} right on the first try, and each one took ${avg.toFixed(1)} seconds on average. Your best streak was ${sess.best} in a row.`);
+  if(n<5)P.push('That’s a short session, so this is only a first look. Ten or more gives a clearer picture.');
+  if(prev&&n>=5){
+    const d=acc-prev.acc,ds=avg-prev.avg,when=new Date(prev.t).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
+    const a=Math.abs(d)<0.05?`your accuracy held steady (${pct(prev.acc)} last time)`:d>0?`your accuracy went up from ${pct(prev.acc)} to ${pct(acc)}`:`your accuracy dipped from ${pct(prev.acc)} to ${pct(acc)}, which is normal after moving to a harder level or a faster tempo`;
+    const s=ds<-0.3?`you answered ${(-ds).toFixed(1)} seconds faster`:ds>0.3?`you took a little longer per answer (${prev.avg.toFixed(1)} s last time)`:'your speed was about the same';
+    P.push(`Compared with your last ${kWord} session (${when}), ${a}, and ${s}.`);
+  }else if(n>=5)P.push(`This is the first ${kWord} session saved on this device. Next time, this report will show how you’re changing.`);
+  P.push(`Across all your practice, you know ${mastered} ${kWord} well: right on the first try at least 80% of the time, in under 4 seconds${prev&&prev.mastered!=null&&mastered!==prev.mastered?`, ${mastered>prev.mastered?'up':'down'} from ${prev.mastered} last time`:''}.`);
+  const top=S.mode==='chords'?S.clevel>=3:S.level>=3;
+  let nextStep='';
+  if(n>=10){
+    if(acc>=0.85&&avg<=3)nextStep=top?'You’re reading these confidently. Turn on the metronome’s “Keep going” mode, or raise the tempo a little.':'You’re ready for the next level. Move up one, or add the metronome’s “Keep going” mode at a slow tempo.';
+    else if(acc<0.6)nextStep='Stay at this level for now. Find the nearest landmark first, and say the note name out loud before you play it.';
+    else nextStep='Stay at this level until you reach about 85% on the first try, then move up.';
+  }
+  if(learn.length)nextStep+=(nextStep?' ':'')+`Next time, spend extra time on ${learn.slice(0,4).map(i=>i.label).join(', ')}.`;
+  if(nextStep)P.push(nextStep);
+  const group=(t,arr,empty)=>`<h3>${t} <span class="cnt">${arr.length}</span></h3>${arr.length?`<ul class="chips">${arr.map(chip).join('')}</ul>`:`<p class="small">${empty}</p>`}`;
+  const html=`<div class="rstats"><div><b>${fmtClock(dur)}</b><span>Practice time</span></div><div><b>${n}</b><span>Played</span></div><div><b>${n?pct(acc):'–'}</b><span>First try</span></div><div><b>${n?avg.toFixed(1)+' s':'–'}</b><span>Average time</span></div></div>
+    <h3>How you’re doing</h3>${P.map(p=>`<p>${p}</p>`).join('')}
+    ${group('You know these well',well,'Nothing yet. Every one needs a clean first try in under 4 seconds.')}
+    ${group('Getting there',mid,'None.')}
+    ${group('Still learning',learn,n?'Nothing here. Nice work.':'Play a few and they’ll show up here.')}
+    <p class="small">Counts show first-try answers out of times played, then average time. Hint and Show me don’t count as a first try.</p>`;
+  const L=arr=>arr.length?arr.map(i=>`${i.label} (${i.clef}) ${i.first}/${i.n}, ${i.avg.toFixed(1)} s`).join('; '):'none';
+  const text=`Note Reader practice report, ${new Date().toLocaleString()}\nPractice time: ${fmtClock(dur)} · Played: ${n} · First try: ${n?pct(acc):'–'} · Average: ${n?avg.toFixed(1)+' s':'–'}\n\n${P.join('\n\n')}\n\nKnow well: ${L(well)}\nGetting there: ${L(mid)}\nStill learning: ${L(learn)}`;
+  return {html,text,entry:{t:Date.now(),kind,n,acc,avg,dur,mastered}};
+}
+let lastReport='';
+function finish(){
+  if(metro.on)setMetro(false);
+  if(tStart&&!pauseAt)togglePause();
+  const r=buildReport();lastReport=r.text;
+  if(sess.n>0){
+    const h=store.get('history',[]);
+    if(savedIdx>=0&&savedIdx<h.length)h[savedIdx]=r.entry;else{h.push(r.entry);savedIdx=h.length-1}
+    while(h.length>200){h.shift();savedIdx--}
+    store.set('history',h);
+  }
+  $('rBody').innerHTML=r.html;
+  $('ov').classList.add('on');$('closeR').focus();
+}
+function closeReport(resume){$('ov').classList.remove('on');if(resume&&pauseAt)togglePause()}
+function newSession(){
+  Object.assign(sess,{n:0,first:0,ms:0,streak:0,best:0});sessItems={};
+  tStart=0;tPaused=0;pauseAt=0;savedIdx=-1;
+  $('pauseB').textContent='Pause';$('clockWrap').classList.remove('paused');
+  tickClock();renderStats();closeReport(false);next();
 }
 function renderStats(){
   $('sN').textContent=sess.n;
@@ -510,7 +637,7 @@ async function setMetro(on){
   const btn=$('metB');
   if(on){
     try{await ensureAC()}catch(e){say('Sound couldn’t start in this browser.','bad');return}
-    metro.on=true;metro.beat=0;metro.next=ac.currentTime+0.15;
+    metro.on=true;startClock();metro.beat=0;metro.next=ac.currentTime+0.15;
     clearInterval(metro.timer);metro.timer=setInterval(schedule,25);
     if(pacing())next();
   }else{
@@ -537,7 +664,7 @@ async function startMic(){
     an2=ac.createAnalyser();an2.fftSize=16384;an2.smoothingTimeConstant=0;src.connect(an2);
     buf=new Float32Array(an.fftSize);fbuf=new Float32Array(an2.frequencyBinCount);
     setInterval(tick,45);
-    listening=true;
+    listening=true;startClock();
     const b=$('micB');b.textContent='Listening';b.classList.add('on');b.disabled=true;
     say(`Play this ${cur&&cur.kind==='chord'?'chord':'note'}`);
   }catch(e){
@@ -684,7 +811,7 @@ $('metB').addEventListener('click',()=>setMetro(!metro.on));
 $('micB').addEventListener('click',startMic);
 $('hintB').addEventListener('click',hint);
 $('showB').addEventListener('click',showMe);
-$('skipB').addEventListener('click',()=>{sess.streak=0;renderStats();next()});
+$('skipB').addEventListener('click',()=>{startClock();sess.streak=0;renderStats();next()});
 $('calB').addEventListener('click',calibrate);
 let resetArmed=false;
 $('resetB').addEventListener('click',e=>{
@@ -704,6 +831,16 @@ kb.addEventListener('pointerdown',e=>{
     playedChord(ms.map(pcOf),'click',ms);
   }
 });
+
+$('pauseB').addEventListener('click',()=>{if(!tStart)startClock();else togglePause()});
+$('finishB').addEventListener('click',finish);
+$('closeR').addEventListener('click',()=>closeReport(true));
+$('newS').addEventListener('click',newSession);
+$('copyR').addEventListener('click',async e=>{
+  try{await navigator.clipboard.writeText(lastReport);e.target.textContent='Copied'}catch(x){e.target.textContent='Copy not allowed here'}
+  setTimeout(()=>e.target.textContent='Copy report',2000);
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('ov').classList.contains('on'))closeReport(true)});
 
 buildKb();syncUI();renderStats();next();
 }
