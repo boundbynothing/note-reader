@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Note Reader</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: calm practice room, encouraging, no clutter
+   IDEA: a music stand above a piano keyboard
+   PICTURE: one big staff with one note or chord; the keys light up underneath
+   COLOUR: paper white card, piano-lacquer black band, green right / red miss / amber hint
+   TYPE: Atkinson Hyperlegible, built for easy reading */
+:root{color-scheme:light dark;--bg:light-dark(#eceae5,#111215);--card:light-dark(#ffffff,#1b1d22);--ink:light-dark(#17181c,#ecebe7);--soft:light-dark(#5b5e66,#a6a9b1);--line:light-dark(#d8d5ce,#2d3037);--ok:#1e9550;--bad:#d23f38;--hint:#d39400;--show:#2f6fd6;--sel:#8a5cd6;--lac:#141417}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Atkinson Hyperlegible",system-ui,sans-serif;overflow-x:clip}
+main{max-width:1000px;margin:0 auto;padding:22px max(4vw,14px) 48px}
+h1{font-size:34px;line-height:1.05;margin:0 0 4px}
+h2{font-size:20px;margin:0 0 12px}
+h3{font-size:16px;margin:18px 0 8px}
+.sub{color:var(--soft);margin:0 0 16px}
+.stand{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(0,0,0,.35)}
+.paper{padding:14px 16px 6px}
+#staff{display:block;width:100%;height:auto;max-height:44vh;color:var(--ink)}
+#staff .lines line{stroke:currentColor;stroke-width:1.1}
+.clef{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.dot{fill:currentColor}
+.note .hd,.acc{fill:currentColor}
+.note.ok .hd{fill:var(--ok)}
+.note.bad .hd{fill:var(--bad)}
+.ghost .hd{fill:var(--hint);opacity:.6}
+.hole{fill:var(--card)}
+.nm{font:700 13px "Atkinson Hyperlegible",system-ui,sans-serif;fill:var(--ok);paint-order:stroke;stroke:var(--card);stroke-width:4px}
+.glbl{font:700 9px "Atkinson Hyperlegible",system-ui,sans-serif;fill:var(--hint);paint-order:stroke;stroke:var(--card);stroke-width:3px}
+.msg{min-height:60px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:19px;font-weight:700;padding:4px 8px;text-wrap:balance}
+.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}.msg.hint{color:var(--hint)}
+.controls{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;padding:4px 0 14px}
+button,select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:44px;padding:0 16px;cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--show);outline-offset:2px}
+button.primary{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:700}
+button.primary.on{background:var(--ok);border-color:var(--ok);color:#fff}
+button.metro.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.hear{display:flex;align-items:center;gap:14px;padding:0 0 14px;color:var(--soft);font-size:15px;justify-content:center;flex-wrap:wrap}
+.hear b{color:var(--ink);display:inline-block;min-width:3ch}
+.meter{position:relative;width:140px;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.meter i{position:absolute;inset:0 auto 0 0;width:0;background:var(--ok);transition:width .06s}
+.meter s{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.6}
+.beats{display:none;gap:6px;align-items:center}
+.beats.on{display:flex}
+.beats span{width:12px;height:12px;border-radius:50%;background:var(--line)}
+.beats span.lit{background:var(--ink)}
+.beats span.lit.one{background:var(--hint)}
+.piano{background:var(--lac);padding:12px 12px 10px}
+#kb{display:block;width:100%;height:auto;touch-action:manipulation}
+.wk{fill:#fbfaf6;stroke:#2a2a2e;stroke-width:.4;cursor:pointer}
+.bk{fill:#1b1b1f;stroke:#000;stroke-width:.3;cursor:pointer}
+.wk.sel,.bk.sel{fill:var(--sel)}
+.wk.show,.bk.show{fill:var(--show)}.wk.hint,.bk.hint{fill:var(--hint)}
+.wk.bad,.bk.bad{fill:var(--bad)}.wk.ok,.bk.ok{fill:var(--ok)}
+.kl{font:700 4.2px system-ui,sans-serif;fill:#8a8990;pointer-events:none}
+.keynote{color:#a9a8ae;font-size:13px;margin:6px 2px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:16px;margin-top:16px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.row{margin-bottom:14px}
+.row>label,.lbl{display:block;font-weight:700;margin-bottom:6px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--card);border-color:var(--ink)}
+select{width:100%;font-size:16px}
+.chk{display:flex;gap:10px;align-items:center;min-height:36px;cursor:pointer}
+.chk input{width:20px;height:20px;accent-color:var(--ok);flex:none}
+input[type=range]{width:100%;accent-color:var(--ink)}
+.small{font-size:14px;color:var(--soft);margin:4px 0 0}
+.bpm{display:flex;align-items:center;gap:10px}
+.bpm b{font-size:22px;min-width:3ch;text-align:right;white-space:nowrap}
+.bpm button{min-width:44px;padding:0;font-size:20px}
+.notes-only,.chords-only{display:block}
+body.chords .notes-only,body:not(.chords) .chords-only{display:none}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0}
+.stats div{background:var(--bg);border-radius:10px;padding:10px 12px}
+.stats dt{font-size:13px;color:var(--soft)}
+.stats dd{margin:0;font-size:26px;font-weight:700;line-height:1.2;white-space:nowrap}
+#weak{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px}
+#weak li{background:var(--bg);border-radius:999px;padding:6px 12px;font-size:14px}
+#weak li b{font-size:16px}
+#weak .empty{background:none;padding:0;color:var(--soft)}
+.ghostb{margin-top:16px;font-size:14px;min-height:38px;color:var(--soft)}
+details.panel{margin-top:16px}
+summary{font-weight:700;cursor:pointer;min-height:28px}
+details li{margin-bottom:6px}
+@media(max-width:600px){h1{font-size:28px}.msg{font-size:17px}.controls button{flex:1 1 40%}}
+@media(prefers-reduced-motion:reduce){.meter i{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Note Reader</h1>
+  <p class="sub">See a note or chord, play it on your piano. The page listens through your microphone and tells you if you got it right.</p>
+
+  <section class="stand">
+    <div class="paper">
+      <svg id="staff" role="img" aria-label="Music staff showing what to play"></svg>
+      <div id="msg" class="msg" aria-live="polite">Press “Start listening,” then play what you see.</div>
+      <div class="controls">
+        <button id="micB" class="primary">Start listening</button>
+        <button id="metB" class="metro" aria-pressed="false">Metronome</button>
+        <button id="hintB">Hint</button>
+        <button id="showB">Show me</button>
+        <button id="skipB">Skip</button>
+      </div>
+      <div class="hear">
+        <span>Hearing: <b id="heard">–</b></span>
+        <div class="meter" title="Microphone level; the mark is the sensitivity cutoff"><i id="lvl"></i><s id="thr"></s></div>
+        <div class="beats" id="beats" aria-hidden="true"><span class="one"></span><span></span><span></span><span></span></div>
+      </div>
+    </div>
+    <div class="piano">
+      <svg id="kb" aria-label="Piano keyboard from C2 to C6. Click keys to answer without the microphone."></svg>
+      <p class="keynote" id="kbNote">C4 is middle C. No microphone? Click the keys to answer.</p>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>Practice settings</h2>
+      <div class="row"><span class="lbl">Practice</span>
+        <div class="seg" id="modeSeg"><button data-v="notes">Single notes</button><button data-v="chords">Chords</button></div>
+      </div>
+      <div class="row"><span class="lbl">Clef</span>
+        <div class="seg" id="clefSeg"><button data-v="treble">Treble</button><button data-v="bass">Bass</button><button data-v="both">Both</button></div>
+      </div>
+      <div class="row"><label for="levelSel">Level</label><select id="levelSel"></select></div>
+      <label class="chk notes-only"><input type="checkbox" id="accChk"> Include sharps and flats</label>
+      <label class="chk chords-only"><input type="checkbox" id="invChk"> Include inversions</label>
+      <label class="chk"><input type="checkbox" id="namesChk"> Show the name after I get it</label>
+      <label class="chk notes-only"><input type="checkbox" id="octChk"> Accept the right letter in any octave</label>
+      <p class="small chords-only">Chords count in any octave and any order, as long as all three notes sound together.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Metronome</h2>
+      <div class="row"><span class="lbl">Tempo (beats per minute)</span>
+        <div class="bpm"><button id="bpmDown" aria-label="Slower">−</button><input type="range" id="bpm" min="40" max="160" step="2" aria-label="Tempo"><button id="bpmUp" aria-label="Faster">+</button><b id="bpmVal">60</b></div>
+      </div>
+      <div class="row"><label for="paceSel">When the metronome is on</label>
+        <select id="paceSel">
+          <option value="0">Wait for me (just keep time)</option>
+          <option value="4">Keep going: new one every 4 beats</option>
+          <option value="2">Keep going: new one every 2 beats</option>
+          <option value="1">Keep going: new one every beat</option>
+        </select>
+        <p class="small">“Keep going” is real sight-reading practice: the music doesn’t wait, so play what you can and move on.</p>
+      </div>
+      <div class="row"><label for="volR">Click volume</label><input type="range" id="volR" min="1" max="10" step="1"></div>
+      <h2 style="margin-top:20px">Microphone</h2>
+      <div class="row"><label for="sens">Sensitivity</label>
+        <input type="range" id="sens" min="1" max="10" step="1">
+        <p class="small">Raise it if soft notes aren’t heard. Lower it if room noise triggers notes.</p>
+      </div>
+      <div class="row"><button id="calB">Tune: play middle C</button><p class="small" id="calInfo"></p></div>
+    </div>
+
+    <div class="panel">
+      <h2>This session</h2>
+      <dl class="stats">
+        <div><dt>Played</dt><dd id="sN">0</dd></div>
+        <div><dt>Right on first try</dt><dd id="sF">–</dd></div>
+        <div><dt>Average time</dt><dd id="sT">–</dd></div>
+        <div><dt>Streak (best)</dt><dd id="sS">0</dd></div>
+      </dl>
+      <h3>To work on</h3>
+      <ul id="weak"></ul>
+      <p class="small">Saved in this browser. Your trickiest ones show up more often.</p>
+      <button id="resetB" class="ghostb">Reset saved progress</button>
+    </div>
+  </section>
+
+  <details class="panel">
+    <summary>How to use this</summary>
+    <ul>
+      <li>Open this file in <b>Chrome or Edge</b> and allow the microphone when asked. Set the device on the music stand, in a quiet room.</li>
+      <li>Play firmly and let the sound ring. The page moves on when it hears the right note (right key, right octave) or the right chord.</li>
+      <li>An older upright may be a little out of tune. Press <b>Tune: play middle C</b> once and the page adjusts.</li>
+      <li><b>Hint</b> points you to a landmark or the bottom note of a chord. <b>Show me</b> lights up the keys. Either one means it doesn’t count as a first try.</li>
+      <li>Read from landmarks instead of counting up from C. Next line or space = the next white key. Line to line, or space to space = skip one white key.</li>
+      <li>Chords: a root-position triad is three notes stacked on all lines or all spaces. Inversions move the bottom note to the top, so the root sits just above the wider gap.</li>
+      <li>Metronome: start slow (50–60) with “Keep going: every 4 beats.” Speed up only when most notes are green. The click is set to a pitch the page ignores, but headphones help if it confuses the listening.</li>
+    </ul>
+  </details>
+</main>
+
+<script>
+{
+const NAMES=['C','D','E','F','G','A','B'],SEMI=[0,2,4,5,7,9,11];
+const PC=['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+const G=14,KLO=36,KHI=84;
+const LEVELS={treble:[[28,32,35],[28,36],[29,39],[26,42]],bass:[[21,24,28],[19,28],[17,27],[14,30]]};
+const NOTE_LEVELS=['1 · Landmark notes only','2 · Landmarks and their neighbors','3 · The whole staff','4 · Add ledger lines'];
+const CHORD_LEVELS=['1 · C, F and G major','2 · Add D minor, E minor, A minor','3 · Major and minor on every white key','4 · All 24 major and minor chords'];
+/* chord roots: [letter index, accidental, quality] */
+const MAJ_ALL=[[0,0],[1,-1],[1,0],[2,-1],[2,0],[3,0],[3,1],[4,0],[5,-1],[5,0],[6,-1],[6,0]];
+const MIN_ALL=[[0,0],[0,1],[1,0],[2,-1],[2,0],[3,0],[3,1],[4,0],[4,1],[5,0],[6,-1],[6,0]];
+const CHORDS=[
+  [[0,0,'maj'],[3,0,'maj'],[4,0,'maj']],
+  [[0,0,'maj'],[3,0,'maj'],[4,0,'maj'],[1,0,'min'],[2,0,'min'],[5,0,'min']],
+  [0,1,2,3,4,5,6].flatMap(l=>[[l,0,'maj'],[l,0,'min']]),
+  MAJ_ALL.map(r=>[...r,'maj']).concat(MIN_ALL.map(r=>[...r,'min']))
+];
+const LAND={
+  treble:[[28,'Middle C','the ledger line just below the staff'],[32,'Treble G','the line the treble clef curls around'],[35,'Treble C','the third space'],[39,'High G','the space just above the staff'],[42,'High C','two ledger lines above the staff']],
+  bass:[[14,'Low C','two ledger lines below the staff'],[17,'Low F','the space just below the staff'],[21,'Bass C','the second space'],[24,'Bass F','the line between the clef’s two dots'],[28,'Middle C','the ledger line just above the staff']]
+};
+const $=id=>document.getElementById(id);
+const staff=$('staff'),kb=$('kb'),msg=$('msg');
+
+const store={
+  get(k,d){try{const v=localStorage.getItem('noteReader.'+k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem('noteReader.'+k,JSON.stringify(v))}catch(e){}}
+};
+const S=Object.assign({mode:'notes',clef:'treble',level:0,clevel:0,acc:false,inv:false,anyOct:false,names:true,sens:6,cal:0,bpm:60,pace:4,vol:6},store.get('settings',{}));
+let notes=store.get('notes',{});
+const saveS=()=>store.set('settings',S);
+
+const pcOf=m=>((m%12)+12)%12;
+const accStr=a=>a>0?'♯':a<0?'♭':'';
+function mk(d,acc,clef){
+  const li=((d%7)+7)%7,oct=Math.floor(d/7);
+  const label=NAMES[li]+accStr(acc)+oct;
+  return {d,acc,clef,li,oct,label,midi:12*(oct+1)+SEMI[li]+acc,key:clef+':'+label};
+}
+const pcName=m=>PC[pcOf(m)]+(Math.floor(m/12)-1);
+const range=(a,b)=>{const r=[];for(let i=a;i<=b;i++)r.push(i);return r};
+
+/* ---------- targets ---------- */
+function noteTarget(n){return {kind:'note',notes:[n],clef:n.clef,key:n.key,label:n.label,midis:[n.midi],pcs:[pcOf(n.midi)]}}
+function chordTarget(spec,clef,inv){
+  const[li,acc,q]=spec,oct=clef==='treble'?4:3,rd=oct*7+li;
+  const rootMidi=12*(oct+1)+SEMI[li]+acc,ints=[0,q==='maj'?4:3,7];
+  let ns=ints.map((iv,k)=>{const d=rd+2*k,nl=d%7,nat=12*(Math.floor(d/7)+1)+SEMI[nl];return mk(d,rootMidi+iv-nat,clef)});
+  for(let k=0;k<inv;k++)ns[k]=mk(ns[k].d+7,ns[k].acc,clef);
+  ns.sort((a,b)=>a.d-b.d);
+  if(ns.some(n=>n.midi>KHI))ns=ns.map(n=>mk(n.d-7,n.acc,clef));
+  const rootName=NAMES[li]+accStr(acc),name=rootName+(q==='maj'?' major':' minor');
+  const invName=['','1st inversion','2nd inversion'][inv];
+  const label=name+(inv?` (${invName})`:'');
+  return {kind:'chord',notes:ns,clef,key:clef+':'+label,label,name,invName,inv,rootName,midis:ns.map(n=>n.midi),pcs:[...new Set(ns.map(n=>pcOf(n.midi)))]};
+}
+function pool(){
+  const clefs=S.clef==='both'?['treble','bass']:[S.clef],out=[];
+  if(S.mode==='chords'){
+    for(const c of clefs)for(const sp of CHORDS[S.clevel])for(const inv of S.inv?[0,1,2]:[0])out.push(chordTarget(sp,c,inv));
+    return out.filter(t=>t.midis.every(m=>m>=KLO&&m<=KHI));
+  }
+  for(const c of clefs){
+    const L=LEVELS[c][S.level];
+    let ds=S.level===0?L:range(L[0],L[1]);
+    if(S.clef==='both')ds=ds.filter(d=>c==='treble'?d>=28:d<=28);
+    for(const d of ds){
+      out.push(mk(d,0,c));
+      if(S.acc){const li=d%7;if(li!==2&&li!==6)out.push(mk(d,1,c));if(li!==0&&li!==3)out.push(mk(d,-1,c));}
+    }
+  }
+  return out.filter(n=>n.midi>=KLO&&n.midi<=KHI).map(noteTarget);
+}
+function pick(){
+  const P=pool();let tot=0;
+  const w=P.map(t=>{
+    const s=notes[t.key];let x=1;
+    if(s&&s.n){x+=2*(1-s.first/s.n)+Math.min(1.5,s.ms/s.n/4000)}
+    if(t.kind==='note'&&t.notes[0].acc)x*=.5;
+    if(t.kind==='chord'&&t.inv)x*=.7;
+    if(cur&&t.key===cur.key&&P.length>1)x=0;
+    tot+=x;return x;
+  });
+  let r=Math.random()*tot;
+  for(let i=0;i<P.length;i++){r-=w[i];if(r<=0)return P[i]}
+  return P[P.length-1];
+}
+
+/* ---------- staff drawing ---------- */
+function layout(){
+  if(S.clef==='treble')return{h:165,tb:112};
+  if(S.clef==='bass')return{h:160,bb:118};
+  return{h:278,tb:112,bb:224};
+}
+const yOf=(n,L)=>n.clef==='treble'?L.tb-(n.d-30)*G/2:L.bb-(n.d-18)*G/2;
+function staffLines(b){let s='';for(let k=0;k<5;k++)s+=`<line x1="8" x2="292" y1="${b-k*G}" y2="${b-k*G}"/>`;return s}
+function ledgers(ns,L,x){
+  const seen=new Set(),w=G*1.05;let o='';
+  for(const n of ns){
+    const base=n.clef==='treble'?L.tb:L.bb,s=n.d-(n.clef==='treble'?30:18);
+    const ks=[];if(s<=-2)for(let k=-2;k>=s;k-=2)ks.push(k);if(s>=10)for(let k=10;k<=s;k+=2)ks.push(k);
+    for(const k of ks){const y=base-k*G/2;if(seen.has(y))continue;seen.add(y);o+=`<line x1="${x-w}" x2="${x+w}" y1="${y}" y2="${y}"/>`}
+  }
+  return o;
+}
+function head(x,y,cls){
+  return `<g class="${cls}" transform="translate(${x} ${y})"><ellipse class="hd" rx="${G*.74}" ry="${G*.5}"/><ellipse class="hole" rx="${G*.34}" ry="${G*.24}" transform="rotate(-35)"/></g>`;
+}
+function tclef(x,y){
+  const P=(a,b)=>`${(x+a*G).toFixed(1)},${(y+b*G).toFixed(1)}`;
+  return `<path class="clef" d="M${P(.1,.5)} C${P(-.6,.5)} ${P(-.6,-.6)} ${P(.1,-.6)} C${P(1.05,-.6)} ${P(1.2,.95)} ${P(.1,1.1)} C${P(-1.3,1.2)} ${P(-1.5,-.6)} ${P(-.55,-1.4)} C${P(.25,-2.1)} ${P(.95,-3)} ${P(.6,-4)} C${P(.4,-4.7)} ${P(-.35,-4.4)} ${P(-.3,-3.3)} L${P(.45,2.4)} C${P(.55,3.05)} ${P(-.15,3.25)} ${P(-.45,2.85)}"/><circle class="dot" cx="${x-.35*G}" cy="${y+2.7*G}" r="${.3*G}"/>`;
+}
+function bclef(x,y){
+  const P=(a,b)=>`${(x+a*G).toFixed(1)},${(y+b*G).toFixed(1)}`;
+  return `<circle class="dot" cx="${x+.3*G}" cy="${y}" r="${.34*G}"/><path class="clef" d="M${P(0,-.15)} C${P(.2,-1.3)} ${P(2.2,-1.35)} ${P(2.2,.2)} C${P(2.2,1.6)} ${P(1,2.5)} ${P(-.1,2.9)}"/><circle class="dot" cx="${x+2.8*G}" cy="${y-.5*G}" r="${.18*G}"/><circle class="dot" cx="${x+2.8*G}" cy="${y+.5*G}" r="${.18*G}"/>`;
+}
+function draw(){
+  const L=layout(),NX=195,HX=118;
+  staff.setAttribute('viewBox',`0 0 300 ${L.h}`);
+  let o='<g class="lines">';
+  if(L.tb)o+=staffLines(L.tb);
+  if(L.bb)o+=staffLines(L.bb);
+  if(L.tb&&L.bb)o+=`<line x1="8" x2="8" y1="${L.tb-4*G}" y2="${L.bb}"/><line x1="292" x2="292" y1="${L.tb-4*G}" y2="${L.bb}"/>`;
+  o+='</g>';
+  if(L.tb)o+=tclef(38,L.tb-G);
+  if(L.bb)o+=bclef(20,L.bb-3*G);
+  if(hintN){
+    const hy=yOf(hintN,L);
+    o+=`<g class="lines">${ledgers([hintN],L,HX)}</g>`+head(HX,hy,'ghost')+`<text class="glbl" x="${HX}" y="${hy-G*1.25}" text-anchor="middle">${hintN.name}</text>`;
+  }
+  if(cur){
+    o+=`<g class="lines">${ledgers(cur.notes,L,NX)}</g>`;
+    let ai=0;
+    for(const n of [...cur.notes].sort((a,b)=>b.d-a.d)){
+      const y=yOf(n,L);
+      if(n.acc){o+=`<text class="acc" x="${NX-G*1.75-(ai%2)*G*1.15}" y="${y+G*(n.acc>0?.55:.3)}" font-size="${G*1.9}" text-anchor="middle">${accStr(n.acc)}</text>`;ai++}
+    }
+    for(const n of cur.notes)o+=head(NX,yOf(n,L),'note '+noteState);
+    if(reveal){
+      const ys=cur.notes.map(n=>yOf(n,L)),ym=(Math.min(...ys)+Math.max(...ys))/2;
+      o+=`<text class="nm" x="${NX+G*1.4}" y="${ym+5}">${cur.kind==='chord'?cur.name:cur.label}</text>`;
+    }
+  }
+  staff.innerHTML=o;
+}
+
+/* ---------- keyboard ---------- */
+const isBlack=m=>[1,3,6,8,10].includes(pcOf(m));
+function buildKb(){
+  let w='',b='',i=0;const pos={};
+  for(let m=KLO;m<=KHI;m++){
+    if(isBlack(m))continue;
+    pos[m]=i;
+    w+=`<rect class="wk" data-m="${m}" x="${i*10}" y="0" width="10" height="60" rx="1.2"/>`;
+    if(m%12===0)w+=`<text class="kl" x="${i*10+5}" y="55" text-anchor="middle">C${m/12-1}</text>`;
+    i++;
+  }
+  for(let m=KLO;m<=KHI;m++)if(isBlack(m))b+=`<rect class="bk" data-m="${m}" x="${pos[m-1]*10+6.8}" y="0" width="6.4" height="37" rx="1"/>`;
+  kb.setAttribute('viewBox',`-0.5 0 ${i*10+1} 60.5`);
+  kb.innerHTML=w+b;
+}
+function mark(m,cls,ms){
+  const el=kb.querySelector(`[data-m="${m}"]`);if(!el)return;
+  el.classList.add(cls);
+  if(ms)setTimeout(()=>el.classList.remove(cls),ms);
+}
+const clearMarks=cls=>kb.querySelectorAll('.'+cls).forEach(e=>e.classList.remove(cls));
+
+/* ---------- game flow ---------- */
+let cur=null,noteState='',reveal=false,hintN=null,missed=0,usedHelp=false,t0=0,lastWrong=null,lock=0,ignore=null,ignoreUntil=0,listening=false,nextTimer=null,answered=false,beatsIn=0;
+const sel=new Set();
+const sess={n:0,first:0,ms:0,streak:0,best:0};
+const pacing=()=>metro.on&&S.pace>0;
+function say(t,cls=''){msg.textContent=t;msg.className='msg '+cls}
+function next(){
+  clearTimeout(nextTimer);
+  cur=pick();noteState='';reveal=false;hintN=null;missed=0;usedHelp=false;lastWrong=null;answered=false;beatsIn=0;
+  t0=performance.now();lock=t0+300;
+  sel.clear();clearMarks('sel');clearMarks('hint');clearMarks('show');
+  const what=cur.kind==='chord'?'this chord':'this note';
+  say(listening?`Play ${what}`:`Press “Start listening” or click the right key${cur.kind==='chord'?'s':''} below.`);
+  draw();
+}
+function success(markMs){
+  const now=performance.now(),ms=now-t0,first=!missed&&!usedHelp;
+  record(ms,first);
+  noteState='ok';reveal=reveal||S.names;answered=true;
+  clearMarks('show');clearMarks('sel');sel.clear();
+  for(const m of markMs)mark(m,'ok',900);
+  say(`${first?'Yes!':'Got it.'} ${cur.label} · ${(ms/1000).toFixed(1)} s`,'ok');
+  draw();
+  lock=now+(pacing()?60000:900);
+  ignore=cur.pcs.join(',');ignoreUntil=now+1800;
+  if(!pacing())nextTimer=setTimeout(next,900);
+}
+function wrong(text,markMs){
+  missed++;
+  for(const m of markMs)mark(m,'bad',900);
+  say(text,'bad');
+  noteState='bad';draw();
+  setTimeout(()=>{if(noteState==='bad'){noteState='';draw()}},600);
+}
+/* single note: m is a MIDI number */
+function played(m,src){
+  const now=performance.now();
+  if(!cur||cur.kind!=='note'||now<lock)return;
+  if(src==='mic'&&ignore!==null&&now<ignoreUntil){const im=+ignore;if(pcOf(m)===im)return}
+  const target=cur.midis[0];
+  const ok=S.anyOct?pcOf(m-target)===0:m===target;
+  if(ok)return success([m]);
+  if(m===lastWrong)return;
+  lastWrong=m;
+  const sameLetter=pcOf(m-target)===0;
+  wrong(sameLetter?`Right letter, wrong octave. Try ${m<target?'higher':'lower'}.`:`That was ${pcName(m)}. Try again.`,[m]);
+}
+/* chord: pcs = pitch classes heard (or clicked) */
+function playedChord(pcs,src,mids){
+  const now=performance.now();
+  if(!cur||cur.kind!=='chord'||now<lock)return;
+  const set=[...new Set(pcs)].sort((a,b)=>a-b),str=set.join(',');
+  if(src==='mic'&&now<ignoreUntil&&str===ignore)return;
+  const has=cur.pcs.every(p=>set.includes(p)),extra=set.filter(p=>!cur.pcs.includes(p)).length;
+  if(has&&extra<=(src==='mic'?1:0))return success(mids&&mids.length?mids:cur.midis);
+  if(set.length<3||str===lastWrong)return;
+  lastWrong=str;
+  const heardNames=set.map(p=>PC[p]).join(' ');
+  const right=cur.pcs.filter(p=>set.includes(p)).length;
+  wrong(`I heard ${heardNames}. ${right===2?'Two of the three are right.':'Not quite.'} Try again.`,mids||[]);
+}
+function onPaceBeat(){
+  if(!cur)return;
+  beatsIn++;
+  if(beatsIn<S.pace)return;
+  if(answered){next();return}
+  const prev=cur;
+  const s=notes[prev.key]||(notes[prev.key]={n:0,first:0,ms:0});
+  const ms=S.pace*60000/S.bpm;s.n++;s.ms+=ms;store.set('notes',notes);
+  sess.n++;sess.ms+=ms;sess.streak=0;renderStats();
+  for(const m of prev.midis)mark(m,'show',700);
+  next();
+  say(`Missed: that was ${prev.label}. Keep going!`,'bad');
+}
+function record(ms,first){
+  ms=Math.min(ms,30000);
+  const s=notes[cur.key]||(notes[cur.key]={n:0,first:0,ms:0});
+  s.n++;if(first)s.first++;s.ms+=ms;store.set('notes',notes);
+  sess.n++;sess.ms+=ms;
+  if(first){sess.first++;sess.streak++;sess.best=Math.max(sess.best,sess.streak)}else sess.streak=0;
+  renderStats();
+}
+function renderStats(){
+  $('sN').textContent=sess.n;
+  $('sF').textContent=sess.n?Math.round(100*sess.first/sess.n)+'%':'–';
+  $('sT').textContent=sess.n?(sess.ms/sess.n/1000).toFixed(1)+' s':'–';
+  $('sS').textContent=`${sess.streak} (${sess.best})`;
+  const list=Object.entries(notes).filter(([,s])=>s.n>=2&&s.first<s.n)
+    .sort((a,b)=>a[1].first/a[1].n-b[1].first/b[1].n||b[1].ms/b[1].n-a[1].ms/a[1].n).slice(0,6);
+  $('weak').innerHTML=list.length?list.map(([k,s])=>{const i=k.indexOf(':'),c=k.slice(0,i),l=k.slice(i+1);return `<li><b>${l}</b> ${c} · ${Math.round(100*s.first/s.n)}% · ${(s.ms/s.n/1000).toFixed(1)} s</li>`}).join('')
+    :'<li class="empty">Play a few. The ones you miss most will show up here.</li>';
+}
+function hint(){
+  if(!cur)return;usedHelp=true;
+  clearMarks('hint');
+  if(cur.kind==='chord'){
+    const letters=cur.notes.map(n=>NAMES[n.li]+accStr(n.acc)).join(' – ');
+    const bottom=cur.notes[0];
+    mark(bottom.midi,'hint');
+    say(cur.inv?`${cur.name}, ${cur.invName}: ${letters} from the bottom. The root, ${cur.rootName}, sits just above the wider gap.`
+      :`${cur.name}: ${letters}. A stack of skips, all lines or all spaces. Start on the bottom note, ${bottom.label}, and play every other white key${cur.notes.some(n=>n.acc)?', then adjust for the ♯ or ♭':''}.`,'hint');
+    return draw();
+  }
+  const n=cur.notes[0],Ls=LAND[cur.clef];let best=Ls[0];
+  for(const l of Ls)if(Math.abs(l[0]-n.d)<Math.abs(best[0]-n.d))best=l;
+  const steps=n.d-best[0],k=Math.abs(steps),dir=steps>0?'up':'down';
+  hintN=mk(best[0],0,cur.clef);hintN.name=best[1];
+  let t;
+  if(!k)t=`This is ${best[1]}: ${best[2]}.`;
+  else if(k===1)t=`Start at ${best[1]} (${best[2]}). Go 1 step ${dir}: the very next white key.`;
+  else if(k===2)t=`Start at ${best[1]} (${best[2]}). Go 2 steps ${dir}: line to line or space to space, so skip one white key.`;
+  else t=`Start at ${best[1]} (${best[2]}). Count ${k} white keys ${dir}.`;
+  if(n.acc)t+=n.acc>0?' Then the ♯ means one key higher (to the right).':' Then the ♭ means one key lower (to the left).';
+  mark(hintN.midi,'hint');
+  say(t,'hint');draw();
+}
+function showMe(){
+  if(!cur)return;usedHelp=true;reveal=true;
+  clearMarks('show');for(const m of cur.midis)mark(m,'show');
+  say(`It’s ${cur.label}. Play the blue key${cur.kind==='chord'?'s together':''} to continue.`,'hint');draw();
+}
+
+/* ---------- audio: shared context ---------- */
+let ac=null;
+async function ensureAC(){if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();if(ac.state!=='running')await ac.resume();return ac}
+
+/* ---------- metronome ---------- */
+const metro={on:false,next:0,beat:0,timer:null};
+function clickAt(t,accent){
+  const o=ac.createOscillator(),g=ac.createGain(),v=0.04*S.vol;
+  o.type='sine';o.frequency.value=accent?3200:2500;
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(v,t+0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+  o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+0.06);
+}
+function schedule(){
+  while(metro.next<ac.currentTime+0.12){
+    const t=metro.next,b=metro.beat;
+    clickAt(t,b%4===0);
+    setTimeout(()=>onBeat(b),Math.max(0,(t-ac.currentTime)*1000));
+    metro.beat++;metro.next+=60/S.bpm;
+  }
+}
+const dots=[...document.querySelectorAll('#beats span')];
+function onBeat(b){
+  if(!metro.on)return;
+  dots.forEach((d,i)=>d.classList.toggle('lit',i===b%4));
+  if(pacing())onPaceBeat();
+}
+async function setMetro(on){
+  const btn=$('metB');
+  if(on){
+    try{await ensureAC()}catch(e){say('Sound couldn’t start in this browser.','bad');return}
+    metro.on=true;metro.beat=0;metro.next=ac.currentTime+0.15;
+    clearInterval(metro.timer);metro.timer=setInterval(schedule,25);
+    if(pacing())next();
+  }else{
+    metro.on=false;clearInterval(metro.timer);metro.timer=null;
+    dots.forEach(d=>d.classList.remove('lit'));
+    if(answered){clearTimeout(nextTimer);nextTimer=setTimeout(next,400)}
+    lock=Math.min(lock,performance.now()+300);
+  }
+  btn.classList.toggle('on',on);btn.setAttribute('aria-pressed',on);btn.textContent=on?`Metronome ${S.bpm}`:'Metronome';
+  $('beats').classList.toggle('on',on);
+}
+
+/* ---------- microphone + pitch detection ---------- */
+let an=null,an2=null,buf=null,fbuf=null,hist=[],calibrating=false,calib=[];
+const thr=()=>0.04*Math.pow(0.72,S.sens-1);
+function placeThr(){$('thr').style.left=Math.min(98,Math.sqrt(thr())*300)+'%'}
+async function startMic(){
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw Object.assign(new Error('no api'),{name:'NoApi'});
+    const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    await ensureAC();
+    const src=ac.createMediaStreamSource(st);
+    an=ac.createAnalyser();an.fftSize=4096;src.connect(an);
+    an2=ac.createAnalyser();an2.fftSize=16384;an2.smoothingTimeConstant=0;src.connect(an2);
+    buf=new Float32Array(an.fftSize);fbuf=new Float32Array(an2.frequencyBinCount);
+    setInterval(tick,45);
+    listening=true;
+    const b=$('micB');b.textContent='Listening';b.classList.add('on');b.disabled=true;
+    say(`Play this ${cur&&cur.kind==='chord'?'chord':'note'}`);
+  }catch(e){
+    const n=e&&e.name||'',inFrame=(()=>{try{return window.self!==window.top}catch(x){return true}})();
+    let t;
+    if(inFrame)t='This copy is shown inside another page (like the Claude link), which never allows the microphone. Open the downloaded note-reader.html file directly in Chrome instead.';
+    else if(!window.isSecureContext||n==='NoApi')t='This browser won’t offer the mic here. Open the downloaded file in Chrome or Edge (drag it into a browser window).';
+    else if(n==='NotAllowedError'||n==='SecurityError')t='Permission was refused. Click the icon at the left of the address bar, set Microphone to Allow, then reload. On a Mac, also allow Chrome in System Settings → Privacy & Security → Microphone.';
+    else if(n==='NotFoundError'||n==='OverconstrainedError')t='No microphone was found. Check that one is connected and chosen in your computer’s sound settings.';
+    else if(n==='NotReadableError'||n==='AbortError')t='Another app is using the microphone (Zoom, Teams, etc.). Close it, then reload this page.';
+    else t='The microphone couldn’t start'+(n?' ('+n+')':'')+'. Reload the page and try again.';
+    say(t+' You can still click the keys below to answer.','bad');
+  }
+}
+/* one pitch: normalized autocorrelation (McLeod-style) */
+function detect(b,sr){
+  const n=b.length,maxT=Math.min(Math.floor(sr/60),n>>1),minT=Math.max(2,Math.floor(sr/1400));
+  const ns=new Float32Array(maxT+2);
+  for(let t=minT;t<=maxT+1;t++){
+    let a=0,m=0;
+    for(let i=0;i<n-t;i++){const x=b[i],y=b[i+t];a+=x*y;m+=x*x+y*y}
+    ns[t]=m?2*a/m:0;
+  }
+  let t=minT;
+  while(t<maxT&&ns[t]>0)t++;
+  const peaks=[];let gmax=0;
+  while(t<maxT){
+    while(t<maxT&&ns[t]<=0)t++;
+    let best=-1,bt=-1;
+    while(t<maxT&&ns[t]>0){if(ns[t]>best){best=ns[t];bt=t}t++}
+    if(bt>0){peaks.push([bt,best]);if(best>gmax)gmax=best}
+  }
+  if(!peaks.length||gmax<0.6)return null;
+  const p=peaks.find(q=>q[1]>=0.88*gmax);
+  let T=p[0];
+  const a=ns[T-1],c=ns[T+1],d=a-2*ns[T]+c;
+  if(d)T+=(a-c)/(2*d);
+  return {f:sr/T,clarity:p[1]};
+}
+/* several pitches at once: spectral peaks + harmonic sums, strongest note removed each round */
+function multiPitch(fb,sr,size,ref){
+  const bin=sr/size,peaks=[];let gmax=0;
+  const lo=Math.max(2,Math.floor(55/bin)),hi=Math.min(fb.length-2,Math.ceil(4500/bin));
+  for(let i=lo;i<=hi;i++){
+    const v=fb[i];
+    if(v>fb[i-1]&&v>=fb[i+1]&&v>-110){
+      const a=fb[i-1],c=fb[i+1],d=a-2*v+c,off=d?(a-c)/(2*d):0;
+      const amp=Math.pow(10,(v-0.25*(a-c)*off)/20);
+      peaks.push({f:(i+off)*bin,a:amp});if(amp>gmax)gmax=amp;
+    }
+  }
+  const P=peaks.filter(p=>p.a>gmax*0.03);
+  const near=f=>{let b=null,bd=0.028*f;for(const p of P){const d=Math.abs(p.f-f);if(d<bd){bd=d;b=p}}return b};
+  const partial=(f0,h)=>f0*h*Math.sqrt(1+0.0003*h*h);
+  const found=[];let first=0;
+  for(let it=0;it<5;it++){
+    let best=null,bs=0;
+    for(let m=40;m<=88;m++){
+      const f0=ref*Math.pow(2,(m-69)/12),p1=near(f0);
+      if(!p1||p1.a<gmax*0.06)continue;
+      let s=0;for(let h=1;h<=8;h++){const p=near(partial(f0,h));if(p)s+=p.a/Math.sqrt(h)}
+      if(s>bs){bs=s;best={m,f0}}
+    }
+    if(!best)break;
+    if(!first)first=bs;else if(bs<first*0.22)break;
+    found.push(best.m);
+    for(let h=1;h<=10;h++){const p=near(partial(best.f0,h));if(p)p.a*=h===1?0:0.35}
+  }
+  return found;
+}
+let chordHist=[];
+function tick(){
+  an.getFloatTimeDomainData(buf);
+  let r=0;for(let i=0;i<buf.length;i++)r+=buf[i]*buf[i];
+  r=Math.sqrt(r/buf.length);
+  $('lvl').style.width=Math.min(100,Math.sqrt(r)*300)+'%';
+  if(r<thr()){hist=[];chordHist=[];$('heard').textContent='–';return}
+  const ref=440*Math.pow(2,S.cal/1200);
+  if(cur&&cur.kind==='chord'&&!calibrating){
+    an2.getFloatFrequencyData(fbuf);
+    const ms=multiPitch(fbuf,ac.sampleRate,an2.fftSize,ref);
+    const pcs=[...new Set(ms.map(pcOf))].sort((a,b)=>a-b),key=pcs.join(',');
+    chordHist.push(key);if(chordHist.length>3)chordHist.shift();
+    if(pcs.length)$('heard').textContent=pcs.map(p=>PC[p]).join(' ');
+    if(pcs.length&&chordHist.length===3&&chordHist.every(k=>k===key))playedChord(pcs,'mic',ms.filter(m=>cur.pcs.includes(pcOf(m))));
+    return;
+  }
+  const p=detect(buf,ac.sampleRate);
+  if(!p){hist=[];return}
+  if(calibrating){calib.push(p.f);return}
+  const m=Math.round(69+12*Math.log2(p.f/ref));
+  hist.push(m);if(hist.length>3)hist.shift();
+  if(hist.length===3&&hist[0]===m&&hist[1]===m){$('heard').textContent=pcName(m);played(m,'mic')}
+}
+function calibrate(){
+  if(!an){say('Press “Start listening” first, then tune.','bad');return}
+  calibrating=true;calib=[];
+  say('Play middle C (C4) and let it ring…','hint');
+  setTimeout(()=>{
+    calibrating=false;
+    const cs=calib.map(f=>1200*Math.log2(f/261.6256)).filter(c=>Math.abs(c)<150).sort((a,b)=>a-b);
+    if(cs.length<5){say('I couldn’t hear a clear middle C. Try again, a bit louder.','bad');return}
+    S.cal=Math.round(cs[cs.length>>1]);saveS();showCal();
+    say(Math.abs(S.cal)<4?'Your piano is in tune.':`Tuned. Your piano is ${Math.abs(S.cal)} cents ${S.cal<0?'flat':'sharp'}, and the page has adjusted.`,'ok');
+  },2500);
+}
+function showCal(){$('calInfo').textContent=S.cal?`Adjusted for a piano ${Math.abs(S.cal)} cents ${S.cal<0?'flat':'sharp'}.`:'Using standard tuning (A = 440).'}
+
+/* ---------- settings UI ---------- */
+function fillLevels(){
+  const L=S.mode==='chords'?CHORD_LEVELS:NOTE_LEVELS;
+  $('levelSel').innerHTML=L.map((t,i)=>`<option value="${i}">${t}</option>`).join('');
+  $('levelSel').value=S.mode==='chords'?S.clevel:S.level;
+}
+function syncUI(){
+  document.body.classList.toggle('chords',S.mode==='chords');
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===S.mode));
+  document.querySelectorAll('#clefSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===S.clef));
+  fillLevels();
+  $('accChk').checked=S.acc;$('invChk').checked=S.inv;$('namesChk').checked=S.names;$('octChk').checked=S.anyOct;
+  $('sens').value=S.sens;$('bpm').value=S.bpm;$('bpmVal').textContent=S.bpm;$('paceSel').value=S.pace;$('volR').value=S.vol;
+  $('kbNote').textContent=S.mode==='chords'?'C4 is middle C. No microphone? Click the three keys of the chord.':'C4 is middle C. No microphone? Click the keys to answer.';
+  placeThr();showCal();
+}
+function setBpm(v){
+  S.bpm=Math.max(40,Math.min(160,v));saveS();
+  $('bpm').value=S.bpm;$('bpmVal').textContent=S.bpm;
+  if(metro.on)$('metB').textContent=`Metronome ${S.bpm}`;
+}
+$('modeSeg').addEventListener('click',e=>{const v=e.target.dataset&&e.target.dataset.v;if(!v||v===S.mode)return;S.mode=v;saveS();syncUI();chordHist=[];next()});
+$('clefSeg').addEventListener('click',e=>{const v=e.target.dataset&&e.target.dataset.v;if(!v)return;S.clef=v;saveS();syncUI();next()});
+$('levelSel').addEventListener('change',e=>{if(S.mode==='chords')S.clevel=+e.target.value;else S.level=+e.target.value;saveS();next()});
+$('accChk').addEventListener('change',e=>{S.acc=e.target.checked;saveS();next()});
+$('invChk').addEventListener('change',e=>{S.inv=e.target.checked;saveS();next()});
+$('namesChk').addEventListener('change',e=>{S.names=e.target.checked;saveS()});
+$('octChk').addEventListener('change',e=>{S.anyOct=e.target.checked;saveS()});
+$('sens').addEventListener('input',e=>{S.sens=+e.target.value;saveS();placeThr()});
+$('bpm').addEventListener('input',e=>setBpm(+e.target.value));
+$('bpmDown').addEventListener('click',()=>setBpm(S.bpm-4));
+$('bpmUp').addEventListener('click',()=>setBpm(S.bpm+4));
+$('paceSel').addEventListener('change',e=>{S.pace=+e.target.value;saveS();if(metro.on)next()});
+$('volR').addEventListener('input',e=>{S.vol=+e.target.value;saveS()});
+$('metB').addEventListener('click',()=>setMetro(!metro.on));
+$('micB').addEventListener('click',startMic);
+$('hintB').addEventListener('click',hint);
+$('showB').addEventListener('click',showMe);
+$('skipB').addEventListener('click',()=>{sess.streak=0;renderStats();next()});
+$('calB').addEventListener('click',calibrate);
+let resetArmed=false;
+$('resetB').addEventListener('click',e=>{
+  if(!resetArmed){resetArmed=true;e.target.textContent='Click again to erase all saved progress';setTimeout(()=>{resetArmed=false;e.target.textContent='Reset saved progress'},4000);return}
+  notes={};store.set('notes',notes);Object.assign(sess,{n:0,first:0,ms:0,streak:0,best:0});renderStats();
+  resetArmed=false;e.target.textContent='Progress erased';
+});
+kb.addEventListener('pointerdown',e=>{
+  const m=e.target.dataset&&+e.target.dataset.m;if(!m||!cur)return;
+  if(cur.kind==='note')return played(m,'click');
+  if(performance.now()<lock)return;
+  if(sel.has(m)){sel.delete(m);e.target.classList.remove('sel');return}
+  sel.add(m);e.target.classList.add('sel');
+  if(sel.size>=3){
+    const ms=[...sel];
+    setTimeout(()=>{sel.clear();clearMarks('sel')},500);
+    playedChord(ms.map(pcOf),'click',ms);
+  }
+});
+
+buildKb();syncUI();renderStats();next();
+}
+</script>
+</body>
+</html>
